@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+    <style>
+    body, html{
+        background-color: #000;    
+    }
+    .video-container{
+        width: 100%;
+        display: flex;
+        background-color: #000;
+        position: relative;
+    }
+    .video-container iframe{
+        width:100%;
+        height: auto;
+        height: 60vw;
+        max-height: 95vh;
+    }
+    .subtitle-container{
+        display: flex;
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+        align-items: flex-end;
+        text-align: center;
+    }
+    .subtitle-container .subtitle{
+        color: #fff;
+        width: 100%;
+        margin-bottom: 12vh;
+        font-size: 6vh;
+        text-shadow: 0 0 4px rgba(0,0,0,0.8);
+    }
+
+    @media (max-width: 480px){
+        .subtitle-container .subtitle{
+            font-size: 18px;
+        }
+    }
+    </style>
+</head>
+<body>
+    <div class="video-container">
+        <div id="player"></div>
+        <div class="subtitle-container">
+            <div id="subtitles" class="subtitle"></div>
+        </div>   
+        <script>
+                // 2. This code loads the IFrame Player API code asynchronously.
+            var tag = document.createElement('script');
+            var subs = document.getElementById('subtitles');
+            var browserLanguage = window.navigator.languages ? window.navigator.languages[0] : (null);
+            browserLanguage = browserLanguage || window.navigator.language || window.navigator.browserLanguage || window.navigator.userLanguage;
+            var language = browserLanguage.split("-")[0];
+        
+            tag.src = "https://www.youtube.com/iframe_api";
+            var firstScriptTag = document.getElementsByTagName('script')[0];
+            firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+        
+            var videoId = "";
+            window.onhashchange=function(){
+                var parts = document.location.hash.replace("#","").split("/");
+                videoId = parts[0];
+                if (parts[1]){
+                    language=parts[1];
+                }else{
+                    language = browserLanguage.split("-")[0];
+                }
+                loadPlayer(videoId);
+                fetchSubtitles(videoId, language);
+            }
+
+            // 3. This function creates an <iframe> (and YouTube player)
+            //    after the API code downloads.
+            var player;
+
+            function loadPlayer(videoId){
+                if (!videoId || videoId==""){
+                    return;
+                }
+                if (!player){
+                    player = new YT.Player('player', {
+                        height: '390',
+                        width: '640',
+                        videoId: videoId,
+                        events: {
+                            'onReady': onPlayerReady,
+                            'onStateChange': onPlayerStateChange
+                        }
+                    });
+                }else{
+                    var data=player.getVideoData();
+                    if (data.video_id!=videoId){
+                        player.loadVideoById(videoId);
+                    }else{
+                        onTimeChange();
+                    }
+                }
+            }
+
+            
+
+            function onYouTubeIframeAPIReady() {
+                window.onhashchange();
+            }
+        
+            // 4. The API will call this function when the video player is ready.
+            function onPlayerReady(event) {
+                event.target.playVideo();
+            }
+        
+            // 5. The API calls this function when the player's state changes.
+            //    The function indicates that when playing a video (state=1),
+            //    the player should play for six seconds and then stop.
+            var playerProc=0;
+            var subtitles=[];
+
+            function onTimeChange(){
+                var time=player.getCurrentTime();
+                console.log("time",time);
+                for(var i=subtitles.length-1; i>=0; i--){
+                    if (subtitles[i].seconds<=time){
+                        console.log(subtitles[i].text);
+                        subs.innerText=subtitles[i].text;
+                        break;
+                    }
+
+                }
+                clearTimeout(playerProc);
+                playerProc = setTimeout(onTimeChange, 200);
+            }
+
+            function timeToSec(time){
+                if (!time) return 0;
+                var parts=time.split(":");
+                return parts[0]*60+parts[1]*1;
+            }
+
+            function fetchSubtitles(videoId, language){
+                fetch("subtitles/"+videoId+"."+language+".transcript")
+                    .then(function(response){
+                        return response.text();
+                    })
+                    .then(function(text){
+                        var lines=text.split("\n");
+                        for(var i=0; i<lines.length; i++){
+                            var parts=lines[i].split(" ");
+                            var time=parts.shift();
+                            subtitles.push({
+                                seconds: timeToSec(time),
+                                time: time,
+                                text: parts.join(" "),
+                                full: lines[i]
+                            })
+                        }
+                        console.log(subtitles);
+                    })
+                    .catch(function(){
+                        if (language!="en"){
+                            fetchSubtitles(videoId,"en");
+                        }
+                    })
+            }
+
+            function onPlayerStateChange(event) {
+                var isPlaying = (event.data == YT.PlayerState.PLAYING);
+                console.log("state", event);
+                if (subtitles.length==0){
+                    fetchSubtitles(videoId, language);
+                }
+                onTimeChange();
+                if (!isPlaying){
+                    clearTimeout(playerProc);
+                }
+            }
+            function stopVideo() {
+                player.stopVideo();
+            }
+        </script>       
+    </div>
+</body>
+</html>
